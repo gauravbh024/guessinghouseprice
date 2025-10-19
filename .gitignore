@@ -27,9 +27,10 @@ wheels/
 instance/
 .webassets-cache
 
-# Model files (optional - remove these lines if you want to commit models)
+# Model files (DON'T commit - too large for Git)
 model.pkl
 pipeline.pkl
+*.pkl
 
 # Data files
 housing.csv
@@ -48,4 +49,3 @@ output.csv
 Thumbs.db
 
 # Logs
-*.log
