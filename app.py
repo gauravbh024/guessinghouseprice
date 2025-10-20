@@ -13,15 +13,28 @@ PIPELINE_FILE = 'pipeline.pkl'
 def load_model_and_pipeline():
     """Load the trained model and preprocessing pipeline from disk"""
     try:
+        if not os.path.exists(MODEL_FILE):
+            print(f"ERROR: {MODEL_FILE} not found!")
+            print("Current directory:", os.getcwd())
+            print("Files in directory:", os.listdir('.'))
+            return None, None
+            
+        if not os.path.exists(PIPELINE_FILE):
+            print(f"ERROR: {PIPELINE_FILE} not found!")
+            print("Current directory:", os.getcwd())
+            print("Files in directory:", os.listdir('.'))
+            return None, None
+            
         model = joblib.load(MODEL_FILE)
         pipeline = joblib.load(PIPELINE_FILE)
         print("Model and pipeline loaded successfully!")
         # Force garbage collection to free memory
         gc.collect()
         return model, pipeline
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        print("Please make sure 'model.pkl' and 'pipeline.pkl' are in the same directory as app.py")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("Current directory:", os.getcwd())
+        print("Files in directory:", os.listdir('.'))
         return None, None
 
 model, pipeline = load_model_and_pipeline()
