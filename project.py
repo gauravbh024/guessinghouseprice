@@ -55,13 +55,21 @@ if not os.path.exists(MODEL_FILE):
     pipeline = build_pipeline(num_attribs, cat_attribs)
     housing_prepared = pipeline.fit_transform(housing_features)
 
-    model = RandomForestRegressor(random_state=23)
+    # OPTIMIZED MODEL - fewer trees and less depth to reduce memory
+    model = RandomForestRegressor(
+        n_estimators=50,      # Reduced from default 100
+        max_depth=15,         # Limit tree depth
+        min_samples_split=5,  # Prevent overfitting
+        random_state=23,
+        n_jobs=1              # Use single thread to save memory
+    )
     model.fit(housing_prepared, housing_labels)
 
-    joblib.dump(model, MODEL_FILE)
-    joblib.dump(pipeline, PIPELINE_FILE)
+    # Save with compression to reduce file size
+    joblib.dump(model, MODEL_FILE, compress=3)
+    joblib.dump(pipeline, PIPELINE_FILE, compress=3)
 
-    print('Model successfully trained. If You Want To Use Model Write Fetures In sample.csv')
+    print('Model successfully trained with memory optimization.')
 else:
     model = joblib.load(MODEL_FILE)
     pipeline = joblib.load(PIPELINE_FILE)
