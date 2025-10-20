@@ -1,83 +1,90 @@
+from flask import Flask, render_template, request, jsonify
 import joblib
-import os
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestRegressor
+import os
+import gc  # Garbage collector for memory management
 
+app = Flask(__name__)
+
+# Load your ML model and pipeline
 MODEL_FILE = 'model.pkl'
 PIPELINE_FILE = 'pipeline.pkl'
 
-def build_pipeline(num_attribs, cat_attribs):
-    num_pipeline = Pipeline([
-        ('imputer', SimpleImputer(strategy='median')),
-        ('scaler', StandardScaler())
-    ])
+def load_model_and_pipeline():
+    """Load the trained model and preprocessing pipeline from disk"""
+    try:
+        model = joblib.load(MODEL_FILE)
+        pipeline = joblib.load(PIPELINE_FILE)
+        print("Model and pipeline loaded successfully!")
+        # Force garbage collection to free memory
+        gc.collect()
+        return model, pipeline
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        print("Please make sure 'model.pkl' and 'pipeline.pkl' are in the same directory as app.py")
+        return None, None
 
-    cat_pipeline = Pipeline([
-        ('encoder', OneHotEncoder(handle_unknown='ignore'))
-    ])
+model, pipeline = load_model_and_pipeline()
 
-    full_pipeline = ColumnTransformer([
-        ('num', num_pipeline, num_attribs),
-        ('cat', cat_pipeline, cat_attribs)
-    ])
-    return full_pipeline
+@app.route('/')
+def home():
+    """Render the home page"""
+    return render_template('index.html')
 
-if not os.path.exists(MODEL_FILE):
-    housing = pd.read_csv('housing.csv')
+@app.route('/predict', methods=['POST'])
+def predict():
+    """Handle prediction requests"""
+    try:
+        if model is None or pipeline is None:
+            return jsonify({
+                'success': False,
+                'error': 'Model not loaded. Please train the model first using project.py'
+            }), 500
+        
+        # Get data from the form
+        data = request.get_json()
+        
+        # Create a DataFrame with the input features
+        # Features must match the order expected by your model
+        input_df = pd.DataFrame([{
+            'longitude': float(data.get('longitude', 0)),
+            'latitude': float(data.get('latitude', 0)),
+            'housing_median_age': float(data.get('housing_median_age', 0)),
+            'total_rooms': float(data.get('total_rooms', 0)),
+            'total_bedrooms': float(data.get('total_bedrooms', 0)),
+            'population': float(data.get('population', 0)),
+            'households': float(data.get('households', 0)),
+            'median_income': float(data.get('median_income', 0)),
+            'ocean_proximity': data.get('ocean_proximity', 'INLAND')
+        }])
+        
+        # Transform input using the pipeline
+        transformed_input = pipeline.transform(input_df)
+        
+        # Make prediction
+        prediction = model.predict(transformed_input)
+        
+        return jsonify({
+            'success': True,
+            'prediction': round(float(prediction[0]), 2)
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
 
-    housing['income_cat'] = pd.cut(
-        housing['median_income'],
-        bins=[0.0, 1.5, 3.0, 4.5, 6.0, np.inf],
-        labels=[1, 2, 3, 4, 5]
-    )
-
-    split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=23)
-
-    for train_index, test_index in split.split(housing, housing['income_cat']):
-        housing = housing.loc[train_index].drop('income_cat', axis=1)
-
-    housing_labels = housing['median_house_value'].copy()
-    housing_features = housing.drop('median_house_value', axis=1)
-    columns_to_save = [col for col in housing.columns if col != 'median_house_value']
-
-    # Save only the column names (no data) to CSV
-    pd.DataFrame(columns=columns_to_save).to_csv('sample.csv', index=False)
-
-    num_attribs = housing_features.drop('ocean_proximity', axis=1).columns.tolist()
-    cat_attribs = ['ocean_proximity']
-
-    pipeline = build_pipeline(num_attribs, cat_attribs)
-    housing_prepared = pipeline.fit_transform(housing_features)
-
-    # OPTIMIZED MODEL - fewer trees and less depth to reduce memory
-    model = RandomForestRegressor(
-        n_estimators=50,      # Reduced from default 100
-        max_depth=15,         # Limit tree depth
-        min_samples_split=5,  # Prevent overfitting
-        random_state=23,
-        n_jobs=1              # Use single thread to save memory
-    )
-    model.fit(housing_prepared, housing_labels)
-
-    # Save with compression to reduce file size
-    joblib.dump(model, MODEL_FILE, compress=3)
-    joblib.dump(pipeline, PIPELINE_FILE, compress=3)
-
-    print('Model successfully trained with memory optimization.')
-else:
-    model = joblib.load(MODEL_FILE)
-    pipeline = joblib.load(PIPELINE_FILE)
-
-    input_data = pd.read_csv('sample.csv')
-    transformed_input = pipeline.transform(input_data)
-
-    prediction_input = model.predict(transformed_input)
-    input_data['median_house_value'] = prediction_input
-    input_data.to_csv('output.csv', index=False)
-    print('Process completed. Results saved in output.csv.')
+if __name__ == '__main__':
+    if model is None or pipeline is None:
+        print("\n" + "="*60)
+        print("WARNING: Model or pipeline not found!")
+        print("Please run 'python project.py' first to train the model.")
+        print("="*60 + "\n")
+    
+    # Get port from environment variable (Render provides this)
+    import os
+    port = int(os.environ.get('PORT', 10000))
+    
+    # Run with production settings
+    app.run(host='0.0.0.0', port=port, debug=False)
